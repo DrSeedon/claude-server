@@ -6,5 +6,6 @@ lancedb/
 cloudflared
 start-tunnel.sh
 *.local.sh
+*.local.service
 *.log
 .env
