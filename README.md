@@ -34,7 +34,7 @@ Browser <-> REST API  <-> aiohttp <-> tmux/subprocess
 
 ```bash
 # 1. Clone and create venv
-git clone <repo-url> && cd claude-server
+git clone https://github.com/DrSeedon/claude-server.git && cd claude-server
 python3 -m venv venv
 source venv/bin/activate
 pip install aiohttp
