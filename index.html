@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Claude Terminal</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<link rel="stylesheet" href="/static/xterm.min.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body { background: #0d1117; color: #e6edf3; font-family: -apple-system, system-ui, sans-serif; }
+
+.screen { display: none; }
+.screen.active { display: flex; }
+
+#login-screen { align-items: center; justify-content: center; height: 100%; }
+#projects-screen { flex-direction: column; height: 100%; }
+.card { width: 100%; max-width: 460px; padding: 24px; }
+.card-center { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 0; }
+h1 { text-align: center; margin-bottom: 24px; font-size: 1.5em; }
+h1 b { color: #7c3aed; }
+
+.form { display: flex; flex-direction: column; gap: 12px; }
+.form input {
+    background: #161b22; border: 1px solid #30363d; color: #e6edf3;
+    padding: 14px; border-radius: 8px; font-size: 16px; outline: none;
+}
+.form input:focus { border-color: #7c3aed; }
+.btn {
+    background: #7c3aed; color: #fff; border: none; padding: 14px;
+    border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: 600;
+}
+.btn:active { background: #5b21b6; }
+.error { color: #f85149; text-align: center; font-size: 14px; display: none; }
+
+.projects-header {
+    padding: 16px 16px 0; flex-shrink: 0; text-align: center;
+}
+.projects-header h1 { margin-bottom: 16px; }
+.plist-wrap {
+    flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0;
+    -webkit-overflow-scrolling: touch;
+}
+.plist { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: flex; gap: 6px; align-items: stretch; flex-shrink: 0; }
+.ptoggle {
+    background: #161b22; border: 1px solid #30363d; color: #7d8590;
+    border-radius: 8px; font-size: 18px; cursor: pointer;
+    width: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+}
+.ptoggle:active { background: #1c2333; }
+.ptoggle.on { color: #3fb950; border-color: #3fb95066; }
+.ptoggle.off { color: #f85149; border-color: #f8514966; }
+.pbtn {
+    background: #161b22; border: 1px solid #30363d; color: #e6edf3;
+    padding: 12px 16px; border-radius: 8px; font-size: 15px; cursor: pointer;
+    text-align: left; display: flex; align-items: center; gap: 10px;
+    flex: 1; min-width: 0;
+}
+.pbtn:active { border-color: #7c3aed; background: #1c2333; }
+.pbtn .pinfo { flex: 1; min-width: 0; }
+.pbtn .nm { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pbtn .ppath { font-size: 11px; color: #7d8590; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.pbtn .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    background: #30363d;
+}
+.pbtn .dot.busy {
+    background: #d29922; box-shadow: 0 0 6px #d2992288;
+    animation: pulse-spin 1.2s linear infinite;
+}
+.pbtn .dot.ready { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+.pbtn .dot.viewed { background: #7d8590; }
+@keyframes pulse-spin {
+    0% { box-shadow: 0 0 4px #d29922aa; }
+    50% { box-shadow: 0 0 12px #d29922ff; }
+    100% { box-shadow: 0 0 4px #d29922aa; }
+}
+.projects-footer { padding: 8px 16px 16px; flex-shrink: 0; text-align: center; }
+.link { background: none; border: none; color: #7d8590; cursor: pointer; padding: 12px; font-size: 14px; width: 100%; text-align: center; }
+
+#terminal-screen { flex-direction: column; height: 100%; }
+.topbar {
+    display: flex; align-items: center; background: #161b22;
+    border-bottom: 1px solid #30363d; padding: 8px 12px; gap: 8px; flex-shrink: 0;
+}
+.topbar .pname { font-weight: 600; font-size: 14px; color: #7c3aed; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar button {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+
+#term-wrap { flex: 1; display: flex; overflow: hidden; position: relative; }
+#terminal-container { flex: 1; overflow: hidden; background: #000; }
+
+#scroll-panel {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 52px; position: absolute; right: 4px; top: 4px; bottom: 4px;
+    background: rgba(22,27,34,0.75); border-radius: 10px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    z-index: 10; padding: 8px 0; touch-action: none; user-select: none;
+}
+#scroll-track {
+    width: 36px; flex: 1; background: rgba(33,38,45,0.5); border-radius: 18px;
+    position: relative; overflow: visible;
+}
+#scroll-track .track-label {
+    position: absolute; width: 100%; text-align: center; font-size: 16px;
+    pointer-events: none; color: rgba(230,237,243,0.3);
+}
+#scroll-track .track-label.top { top: 8px; }
+#scroll-track .track-label.bot { bottom: 8px; }
+#scroll-track .track-mid {
+    position: absolute; left: 6px; right: 6px; top: 50%; height: 2px;
+    background: rgba(124,58,237,0.5); border-radius: 1px;
+}
+#scroll-track .tick {
+    position: absolute; left: 8px; right: 8px; height: 1px;
+    background: rgba(230,237,243,0.12); pointer-events: none;
+}
+#scroll-track .tick::after {
+    content: attr(data-speed); position: absolute; right: -1px;
+    transform: translateX(100%) translateY(-50%); font-size: 8px;
+    color: rgba(230,237,243,0.2); padding-left: 3px; white-space: nowrap;
+}
+#scroll-thumb {
+    width: 36px; height: 44px; background: #7c3aed; border-radius: 18px;
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #fff; font-weight: 700; cursor: grab;
+    box-shadow: 0 0 8px #7c3aed88;
+}
+#scroll-thumb.active { cursor: grabbing; }
+#scroll-thumb .thumb-arrow { font-size: 16px; line-height: 1; }
+
+.input-bar {
+    display: flex; gap: 6px; padding: 6px 8px; background: #161b22;
+    border-top: 1px solid #30363d; flex-shrink: 0;
+}
+.input-bar input {
+    flex: 1; background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    padding: 10px 12px; border-radius: 8px; font-size: 16px; outline: none;
+    font-family: monospace;
+}
+.input-bar input:focus { border-color: #7c3aed; }
+.input-bar button {
+    background: #7c3aed; color: #fff; border: none; padding: 10px 16px;
+    border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600;
+    white-space: nowrap;
+}
+.input-bar button:active { background: #5b21b6; }
+
+.toolbar {
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 8px;
+    background: #161b22; border-top: 1px solid #21262d; flex-shrink: 0;
+    justify-content: center;
+}
+.toolbar button {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 7px 9px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    min-width: 36px; font-family: monospace; font-weight: 600;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    user-select: none;
+}
+.toolbar button:active { background: #7c3aed; border-color: #7c3aed; }
+.toolbar button.hi { background: #7c3aed22; border-color: #7c3aed55; }
+
+#files-panel {
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #0d1117; z-index: 20; flex-direction: column;
+}
+#files-panel.open { display: flex; }
+.files-header {
+    display: flex; align-items: center; padding: 10px 12px; gap: 8px;
+    background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0;
+}
+.files-header .fpath { flex: 1; font-size: 13px; color: #7d8590; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-header button {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+.flist-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.flist { display: flex; flex-direction: column; }
+.fitem {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #21262d; cursor: pointer; font-size: 14px;
+}
+.fitem:active { background: #1c2333; }
+.fitem .ficon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+.fitem .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fitem .fmeta { font-size: 11px; color: #7d8590; flex-shrink: 0; text-align: right; }
+
+#preview-panel {
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #0d1117; z-index: 25; flex-direction: column;
+}
+#preview-panel.open { display: flex; }
+.preview-header {
+    display: flex; align-items: center; padding: 10px 12px; gap: 8px;
+    background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0;
+}
+.preview-header .ptitle { flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-header button {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+#preview-content {
+    flex: 1; overflow: auto; padding: 12px; display: flex; align-items: center; justify-content: center;
+    -webkit-overflow-scrolling: touch;
+}
+#preview-content {
+    flex: 1; overflow: hidden; position: relative; touch-action: none;
+    background: #0a0e14;
+}
+#preview-content img {
+    position: absolute; left: 0; top: 0; transform-origin: 0 0;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#preview-content img.loading { display: none; }
+#preview-content pre {
+    white-space: pre-wrap; word-break: break-word; color: #e6edf3; font-size: 13px;
+    padding: 12px; overflow: auto; position: absolute; inset: 0;
+}
+#preview-content .md-body {
+    color: #e6edf3; font-size: 14px; line-height: 1.6; padding: 16px;
+    overflow: auto; position: absolute; inset: 0; font-family: -apple-system, system-ui, sans-serif;
+}
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { color: #fff; margin: 1em 0 0.5em; }
+.md-body h1 { font-size: 1.6em; border-bottom: 1px solid #30363d; padding-bottom: 0.3em; }
+.md-body h2 { font-size: 1.3em; border-bottom: 1px solid #21262d; padding-bottom: 0.3em; }
+.md-body h3 { font-size: 1.1em; }
+.md-body p { margin: 0.5em 0; }
+.md-body a { color: #58a6ff; }
+.md-body code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+.md-body pre { position: static; background: #161b22; padding: 12px; border-radius: 8px; overflow-x: auto; }
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote { border-left: 3px solid #7c3aed; padding-left: 12px; color: #7d8590; margin: 0.5em 0; }
+.md-body ul, .md-body ol { padding-left: 1.5em; margin: 0.5em 0; }
+.md-body li { margin: 0.2em 0; }
+.md-body table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+.md-body th, .md-body td { border: 1px solid #30363d; padding: 6px 12px; text-align: left; }
+.md-body th { background: #161b22; }
+.md-body hr { border: none; border-top: 1px solid #30363d; margin: 1em 0; }
+.md-body img { max-width: 100%; border-radius: 8px; }
+#zoom-indicator {
+    position: absolute; right: 12px; bottom: 12px; z-index: 30;
+    background: rgba(22,27,34,0.85); color: #e6edf3; padding: 6px 12px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; font-family: monospace;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    pointer-events: none; display: none;
+}
+#zoom-controls {
+    position: absolute; right: 12px; top: 12px; z-index: 30;
+    display: none; flex-direction: column; gap: 4px;
+}
+#zoom-controls button {
+    background: rgba(22,27,34,0.85); border: 1px solid #30363d; color: #e6edf3;
+    width: 36px; height: 36px; border-radius: 8px; font-size: 18px; cursor: pointer;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+#zoom-controls button:active { background: #7c3aed; }
+
+</style>
+</head>
+<body>
+
+<div class="screen" id="login-screen">
+<div class="card">
+    <h1>🖥 <b>Claude</b> Terminal</h1>
+    <form class="form" onsubmit="doLogin(event)">
+        <input type="password" id="pwd" placeholder="Пароль" autocomplete="current-password" autofocus>
+        <button type="submit" class="btn">Войти</button>
+        <div class="error" id="err">Неверный пароль</div>
+    </form>
+</div>
+</div>
+
+<div class="screen" id="projects-screen">
+    <div class="projects-header"><h1>🖥 <b>Проекты</b></h1></div>
+    <div class="plist-wrap"><div class="plist" id="plist"></div></div>
+    <div class="projects-footer"><button class="link" onclick="doLogout()">Выйти</button></div>
+</div>
+
+<div class="screen" id="terminal-screen">
+    <div class="topbar">
+        <span class="pname" id="pname"></span>
+        <button onclick="toggleFiles()">📁</button>
+        <button onclick="backToProjects()">← Проекты</button>
+    </div>
+    <div id="files-panel">
+        <div class="files-header">
+            <button onclick="filesUp()">⬆</button>
+            <span class="fpath" id="files-path">/</span>
+            <button onclick="toggleFiles()">✕</button>
+        </div>
+        <div class="flist-wrap"><div class="flist" id="flist"></div></div>
+    </div>
+    <div id="preview-panel">
+        <div class="preview-header">
+            <span class="ptitle" id="preview-title"></span>
+            <button onclick="closePreview()">✕</button>
+        </div>
+        <div id="preview-content">
+            <div id="zoom-controls">
+                <button onclick="zoomBtn(1.3)">+</button>
+                <button onclick="zoomBtn(0.7)">−</button>
+                <button onclick="zoomReset()">⟲</button>
+            </div>
+            <div id="zoom-indicator"></div>
+        </div>
+    </div>
+    <div id="term-wrap">
+        <div id="terminal-container"></div>
+        <div id="scroll-panel" style="display:none;">
+            <div id="scroll-track">
+                <span class="track-label top">▲</span>
+                <div class="tick" style="top:15%" data-speed="x4"></div>
+                <div class="tick" style="top:32.5%"data-speed="x2"></div>
+                <div class="tick" style="top:42.5%" data-speed="x1"></div>
+                <div class="track-mid"></div>
+                <div class="tick" style="top:57.5%" data-speed="x1"></div>
+                <div class="tick" style="top:67.5%" data-speed="x2"></div>
+                <div class="tick" style="top:85%" data-speed="x4"></div>
+                <div id="scroll-thumb"><span class="thumb-arrow">⬍</span></div>
+                <span class="track-label bot">▼</span>
+            </div>
+        </div>
+    </div>
+    <div class="input-bar">
+        <input type="text" id="cmd-input" placeholder="Введи команду..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button onclick="sendInput()">▶</button>
+    </div>
+    <div class="toolbar">
+        <button class="hi" id="scroll-btn" onpointerdown="toggleScroll()">Scroll</button>
+        <button onpointerdown="send('\x1b')">Esc</button>
+        <button onpointerdown="send('\t')">Tab</button>
+        <button class="hi" onpointerdown="send('\x03')">C-c</button>
+        <button class="hi" onpointerdown="send('\x04')">C-d</button>
+        <button onpointerdown="send('\x01')">Home</button>
+        <button onpointerdown="send('\x1a')">C-z</button>
+        <button onpointerdown="send('\x02')">C-b</button>
+        <button onpointerdown="send('\x0f')">C-o</button>
+        <button onpointerdown="send('\x1b[A')">↑</button>
+        <button onpointerdown="send('\x1b[B')">↓</button>
+        <button onpointerdown="send('\x1b[D')">←</button>
+        <button onpointerdown="send('\x1b[C')">→</button>
+        <button onpointerdown="send('\r')">⏎</button>
+        <button onpointerdown="send('y\r')">Yes</button>
+        <button onpointerdown="send('n\r')">No</button>
+        <button class="hi" onpointerdown="send('\x05\x15')">ClearLn</button>
+        <button class="hi" onpointerdown="send('\x0c')">ClearAll</button>
+        <button class="hi" onpointerdown="send('claude --dangerously-skip-permissions\r')">Claude</button>
+        <button onpointerdown="changeFontSize(-1)">A-</button>
+        <button id="font-size-btn" style="pointer-events:none;min-width:28px;">10</button>
+        <button onpointerdown="changeFontSize(1)">A+</button>
+    </div>
+</div>
+
+<script src="/static/marked.min.js"></script>
+<script src="/static/xterm.min.js"></script>
+<script src="/static/addon-fit.min.js"></script>
+<script src="/static/addon-web-links.min.js"></script>
+<script>
+const API = location.origin;
+let ws = null, term = null, fitAddon = null;
+const cmdHistory = [];
+let histIdx = -1;
+
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const el = document.getElementById(id);
+    el.classList.add('active');
+    if (id === 'terminal-screen') el.style.display = 'flex';
+}
+
+async function doLogin(e) {
+    e.preventDefault();
+    const r = await fetch(API + '/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: document.getElementById('pwd').value})
+    });
+    if (r.ok) {
+        const d = await r.json();
+        localStorage.setItem('token', d.token);
+        loadProjects();
+    } else {
+        document.getElementById('err').style.display = 'block';
+        document.getElementById('pwd').value = '';
+    }
+}
+
+async function loadProjects() {
+    const token = localStorage.getItem('token');
+    const r = await fetch(API + '/api/projects', {
+        headers: {'Authorization': 'Bearer ' + token}
+    });
+    if (!r.ok) { showScreen('login-screen'); return; }
+    const projects = await r.json();
+    const list = document.getElementById('plist');
+    list.innerHTML = '';
+    for (const [name, info] of Object.entries(projects)) {
+        const row = document.createElement('div');
+        row.className = 'prow';
+        const toggle = document.createElement('button');
+        toggle.className = 'ptoggle ' + (info.active ? 'on' : 'off');
+        toggle.textContent = info.active ? '⏹' : '▶';
+        toggle.onclick = () => toggleSession(info.session, info.path, info.active);
+        const b = document.createElement('button');
+        b.className = 'pbtn';
+        const shortPath = info.path.replace(/^\/mnt\/data\//, '').replace(/^\/home\/[^/]+\//, '~/');
+        const dotClass = info.state === 'busy' ? ' busy' : info.state === 'ready' ? ' ready' : info.state === 'viewed' ? ' viewed' : '';
+        b.innerHTML = `<div class="pinfo"><span class="nm">${name}</span><span class="ppath">${shortPath}</span></div><span class="dot${dotClass}"></span>`;
+        b.onclick = () => openTerminal(name, info.session, info.path);
+        row.appendChild(toggle);
+        row.appendChild(b);
+        list.appendChild(row);
+    }
+    showScreen('projects-screen');
+    startProjectsRefresh();
+}
+
+let currentSession = null;
+let currentPath = '';
+let reconnecting = false;
+
+function connectWS(session) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const params = new URLSearchParams();
+    params.set('token', localStorage.getItem('token') || '');
+    if (currentPath) params.set('path', currentPath);
+    ws = new WebSocket(`${proto}//${location.host}/ws/${session}?${params}`);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+        reconnecting = false;
+        if (term) ws.send(JSON.stringify({type: 'resize', cols: term.cols, rows: term.rows}));
+    };
+    ws.onmessage = (e) => {
+        if (!term) return;
+        if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data));
+        else term.write(e.data);
+    };
+    ws.onclose = () => {
+        if (!currentSession || reconnecting) return;
+        reconnecting = true;
+        if (term) term.write('\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n');
+        setTimeout(() => { if (currentSession) connectWS(currentSession); }, 2000);
+    };
+}
+
+function openTerminal(name, session, path) {
+    if (Notification.permission === 'default') Notification.requestPermission();
+    stopProjectsRefresh();
+    currentSession = session;
+    currentPath = path;
+    document.getElementById('pname').textContent = name;
+    if (term) { term.dispose(); term = null; }
+    const container = document.getElementById('terminal-container');
+    container.innerHTML = '';
+
+    const savedFontSize = parseInt(localStorage.getItem('termFontSize')) || 10;
+    term = new Terminal({
+        cursorBlink: true,
+        fontSize: savedFontSize,
+        scrollback: 5000,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+        theme: {
+            background: '#0d1117', foreground: '#e6edf3', cursor: '#7c3aed',
+            selectionBackground: '#7c3aed44',
+            black: '#0d1117', red: '#f85149', green: '#3fb950', yellow: '#d29922',
+            blue: '#58a6ff', magenta: '#bc8cff', cyan: '#39d353', white: '#e6edf3',
+        },
+        allowProposedApi: true
+    });
+
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    term.open(container);
+    fitAddon.fit();
+
+    connectWS(session);
+
+    term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
+    });
+    term.onResize(({cols, rows}) => {
+        if (ws && ws.readyState === WebSocket.OPEN)
+            ws.send(JSON.stringify({type: 'resize', cols, rows}));
+    });
+
+    term.onBell(() => {
+        if (document.hidden && Notification.permission === 'granted') {
+            new Notification('Claude Code', {
+                body: `Сессия "${session}" требует внимания`,
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⚡</text></svg>'
+            });
+        }
+    });
+
+    showScreen('terminal-screen');
+    document.getElementById('font-size-btn').textContent = savedFontSize;
+    document.getElementById('cmd-input').focus();
+    new ResizeObserver(() => { if (fitAddon) fitAddon.fit(); }).observe(container);
+}
+
+function sendInput() {
+    const input = document.getElementById('cmd-input');
+    const text = input.value;
+    if (!text && !ws) return;
+    if (text) {
+        cmdHistory.unshift(text);
+        if (cmdHistory.length > 50) cmdHistory.pop();
+        histIdx = -1;
+    }
+    const needReset = scrollMode;
+    disableToggles();
+    if (needReset) {
+        setTimeout(() => { send(text + '\r'); }, 150);
+    } else {
+        send(text + '\r');
+    }
+    input.value = '';
+    input.focus();
+}
+
+document.addEventListener('keydown', (e) => {
+    const input = document.getElementById('cmd-input');
+    if (document.activeElement !== input) return;
+
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        sendInput();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (histIdx < cmdHistory.length - 1) {
+            histIdx++;
+            input.value = cmdHistory[histIdx];
+        }
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (histIdx > 0) {
+            histIdx--;
+            input.value = cmdHistory[histIdx];
+        } else {
+            histIdx = -1;
+            input.value = '';
+        }
+    }
+});
+
+let scrollMode = false;
+function send(data) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
+}
+
+function disableToggles() {
+    if (scrollMode) toggleScroll();
+}
+
+let scrollInterval = null;
+let scrollPointerId = null;
+
+function toggleScroll() {
+    scrollMode = !scrollMode;
+    const btn = document.getElementById('scroll-btn');
+    const panel = document.getElementById('scroll-panel');
+    if (scrollMode) {
+        send('\x02[');
+        btn.style.background = '#7c3aed';
+        btn.style.color = '#fff';
+        btn.textContent = 'Scroll ✓';
+        panel.style.display = 'flex';
+        changeFontSize(-1);
+    } else {
+        send('q');
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.textContent = 'Scroll';
+        panel.style.display = 'none';
+        scrollJoystickStop();
+        changeFontSize(1);
+    }
+}
+
+function scrollJoystickApply(e) {
+    const track = document.getElementById('scroll-track');
+    const thumb = document.getElementById('scroll-thumb');
+    const rect = track.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const offset = e.clientY - midY;
+    const maxRange = rect.height / 2 - 22;
+    const clamped = Math.max(-maxRange, Math.min(maxRange, offset));
+    const pct = clamped / maxRange;
+
+    thumb.style.top = `calc(50% + ${clamped}px)`;
+
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+
+    const absPct = Math.abs(pct);
+    if (absPct < 0.1) {
+        thumb.querySelector('.thumb-arrow').textContent = '⬍';
+        return;
+    }
+
+    const dir = pct < 0 ? '\x1b[A' : '\x1b[B';
+    thumb.querySelector('.thumb-arrow').textContent = pct < 0 ? '▲' : '▼';
+
+    let speed, interval;
+    if (absPct < 0.35) { speed = 1; interval = 80; }
+    else if (absPct < 0.65) { speed = 2; interval = 50; }
+    else if (absPct < 0.85) { speed = 4; interval = 40; }
+    else { speed = 8; interval = 30; }
+
+    const burst = () => { for (let i = 0; i < speed; i++) send(dir); };
+    burst();
+    scrollInterval = setInterval(burst, interval);
+}
+
+function scrollJoystickStart(e) {
+    e.preventDefault();
+    const track = document.getElementById('scroll-track');
+    track.setPointerCapture(e.pointerId);
+    document.getElementById('scroll-thumb').classList.add('active');
+    scrollPointerId = e.pointerId;
+    scrollJoystickApply(e);
+}
+
+function scrollJoystickMove(e) {
+    if (scrollPointerId !== e.pointerId) return;
+    e.preventDefault();
+    scrollJoystickApply(e);
+}
+
+function scrollJoystickStop() {
+    scrollPointerId = null;
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    const thumb = document.getElementById('scroll-thumb');
+    if (thumb) {
+        thumb.classList.remove('active');
+        thumb.style.top = '50%';
+        thumb.querySelector('.thumb-arrow').textContent = '⬍';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const track = document.getElementById('scroll-track');
+    track.addEventListener('pointerdown', scrollJoystickStart);
+    track.addEventListener('pointermove', scrollJoystickMove);
+    track.addEventListener('pointerup', scrollJoystickStop);
+    track.addEventListener('pointercancel', scrollJoystickStop);
+    track.addEventListener('lostpointercapture', scrollJoystickStop);
+});
+
+
+function changeFontSize(delta) {
+    if (!term) return;
+    const cur = term.options.fontSize || 10;
+    const next = Math.max(6, Math.min(24, cur + delta));
+    if (next === cur) return;
+    term.options.fontSize = next;
+    localStorage.setItem('termFontSize', next);
+    document.getElementById('font-size-btn').textContent = next;
+    if (fitAddon) fitAddon.fit();
+}
+
+function backToProjects() {
+    currentSession = null;
+    if (ws) { ws.close(); ws = null; }
+    if (term) { term.dispose(); term = null; }
+    document.getElementById('terminal-container').innerHTML = '';
+    document.getElementById('cmd-input').value = '';
+    loadProjects();
+}
+
+function doLogout() {
+    localStorage.removeItem('token');
+    showScreen('login-screen');
+}
+
+let filesOpen = false;
+let filesRelPath = '';
+const filesPathCache = {};
+
+function toggleFiles() {
+    const panel = document.getElementById('files-panel');
+    filesOpen = !filesOpen;
+    if (filesOpen) {
+        filesRelPath = filesPathCache[currentPath] || '';
+        panel.classList.add('open');
+        loadFiles();
+    } else {
+        filesPathCache[currentPath] = filesRelPath;
+        panel.classList.remove('open');
+    }
+}
+
+async function loadFiles() {
+    const token = localStorage.getItem('token');
+    const params = new URLSearchParams({root: currentPath, path: filesRelPath});
+    const r = await fetch(API + '/api/files?' + params, {
+        headers: {'Authorization': 'Bearer ' + token}
+    });
+    if (!r.ok) return;
+    const files = await r.json();
+    const list = document.getElementById('flist');
+    const pathEl = document.getElementById('files-path');
+    pathEl.textContent = filesRelPath || '/';
+    list.innerHTML = '';
+    for (const f of files) {
+        const item = document.createElement('div');
+        item.className = 'fitem';
+        const icon = f.is_dir ? '📁' : f.is_image ? '🖼' : getFileIcon(f.ext);
+        const size = f.is_dir ? '' : formatSize(f.size);
+        const age = timeAgo(f.mtime);
+        item.innerHTML = `<span class="ficon">${icon}</span><span class="fname">${esc(f.name)}</span><span class="fmeta">${size}<br>${age}</span>`;
+        if (f.is_dir) {
+            item.onclick = () => { filesRelPath = f.path; loadFiles(); };
+        } else if (f.is_image) {
+            item.onclick = () => previewImage(f);
+        } else if (f.viewable && !f.is_dir) {
+            item.onclick = () => previewText(f);
+        }
+        list.appendChild(item);
+    }
+}
+
+function filesUp() {
+    if (!filesRelPath) return;
+    const parts = filesRelPath.split('/');
+    parts.pop();
+    filesRelPath = parts.join('/');
+    loadFiles();
+}
+
+let imgState = {scale: 1, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0, initDist: 0, initScale: 1, fitScale: 1};
+const activePointers = new Map();
+let zoomFadeTimer = null;
+
+function previewImage(f) {
+    const token = localStorage.getItem('token');
+    const url = API + '/api/files/view?' + new URLSearchParams({root: currentPath, path: f.path, token});
+    const container = document.getElementById('preview-content');
+    document.getElementById('preview-title').textContent = f.name;
+    const existing = container.querySelector('img');
+    if (existing) existing.remove();
+    const oldPre = container.querySelector('pre');
+    if (oldPre) oldPre.remove();
+    const oldMd = container.querySelector('.md-body');
+    if (oldMd) oldMd.remove();
+    document.getElementById('zoom-controls').style.display = 'flex';
+    document.getElementById('zoom-indicator').style.display = 'none';
+    activePointers.clear();
+    document.getElementById('preview-panel').classList.add('open');
+    const img = document.createElement('img');
+    img.className = 'loading';
+    img.alt = f.name;
+    container.insertBefore(img, container.querySelector('#zoom-controls'));
+    img.onload = () => {
+        img.classList.remove('loading');
+        requestAnimationFrame(() => {
+            const cw = container.clientWidth || window.innerWidth;
+            const ch = container.clientHeight || window.innerHeight - 50;
+            const fw = cw / img.naturalWidth;
+            const fh = ch / img.naturalHeight;
+            imgState.fitScale = Math.min(fw, fh, 1);
+            imgState.scale = imgState.fitScale;
+            imgState.x = (cw - img.naturalWidth * imgState.scale) / 2;
+            imgState.y = (ch - img.naturalHeight * imgState.scale) / 2;
+            applyImgTransform(img);
+            showZoom();
+        });
+    };
+    img.onerror = () => {
+        img.classList.remove('loading');
+        img.style.display = 'none';
+        const err = document.createElement('pre');
+        err.textContent = 'Failed to load image: ' + f.name;
+        container.insertBefore(err, container.querySelector('#zoom-controls'));
+    };
+    img.src = url;
+    img.addEventListener('pointerdown', imgPointerDown);
+    img.addEventListener('pointermove', imgPointerMove);
+    img.addEventListener('pointerup', imgPointerUp);
+    img.addEventListener('pointercancel', imgPointerUp);
+    img.addEventListener('wheel', imgWheel, {passive: false});
+    img.addEventListener('dblclick', imgDblClick);
+}
+
+function getImg() { return document.querySelector('#preview-content img'); }
+
+function applyImgTransform(img) {
+    img.style.transform = `translate(${imgState.x}px, ${imgState.y}px) scale(${imgState.scale})`;
+}
+
+function showZoom() {
+    const el = document.getElementById('zoom-indicator');
+    const pct = Math.round(imgState.scale / imgState.fitScale * 100);
+    el.textContent = pct + '%';
+    el.style.display = 'block';
+    clearTimeout(zoomFadeTimer);
+    zoomFadeTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+
+function zoomBtn(factor) {
+    const img = getImg();
+    if (!img) return;
+    const container = document.getElementById('preview-content');
+    const cx = container.clientWidth / 2;
+    const cy = container.clientHeight / 2;
+    const newScale = Math.max(0.05, Math.min(30, imgState.scale * factor));
+    imgState.x = cx - (cx - imgState.x) * (newScale / imgState.scale);
+    imgState.y = cy - (cy - imgState.y) * (newScale / imgState.scale);
+    imgState.scale = newScale;
+    applyImgTransform(img);
+    showZoom();
+}
+
+function zoomReset() {
+    const img = getImg();
+    if (!img) return;
+    const container = document.getElementById('preview-content');
+    imgState.scale = imgState.fitScale;
+    imgState.x = (container.clientWidth - img.naturalWidth * imgState.scale) / 2;
+    imgState.y = (container.clientHeight - img.naturalHeight * imgState.scale) / 2;
+    applyImgTransform(img);
+    showZoom();
+}
+
+function imgPointerDown(e) {
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+    activePointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    if (activePointers.size === 1) {
+        imgState.dragging = true;
+        imgState.lastX = e.clientX;
+        imgState.lastY = e.clientY;
+    } else if (activePointers.size === 2) {
+        const pts = [...activePointers.values()];
+        imgState.initDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        imgState.initScale = imgState.scale;
+    }
+}
+
+function imgPointerMove(e) {
+    e.preventDefault();
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    const img = e.target;
+    if (activePointers.size === 2) {
+        const pts = [...activePointers.values()];
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const mid = {x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2};
+        const newScale = Math.max(0.05, Math.min(30, imgState.initScale * (dist / imgState.initDist)));
+        imgState.x = mid.x - (mid.x - imgState.x) * (newScale / imgState.scale);
+        imgState.y = mid.y - (mid.y - imgState.y) * (newScale / imgState.scale);
+        imgState.scale = newScale;
+        applyImgTransform(img);
+        showZoom();
+    } else if (activePointers.size === 1 && imgState.dragging) {
+        imgState.x += e.clientX - imgState.lastX;
+        imgState.y += e.clientY - imgState.lastY;
+        imgState.lastX = e.clientX;
+        imgState.lastY = e.clientY;
+        applyImgTransform(img);
+    }
+}
+
+function imgPointerUp(e) {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size === 0) imgState.dragging = false;
+    if (activePointers.size === 1) {
+        const pt = [...activePointers.values()][0];
+        imgState.lastX = pt.x;
+        imgState.lastY = pt.y;
+    }
+}
+
+function imgWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.05, Math.min(30, imgState.scale * factor));
+    const rect = e.target.parentElement.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    imgState.x = mx - (mx - imgState.x) * (newScale / imgState.scale);
+    imgState.y = my - (my - imgState.y) * (newScale / imgState.scale);
+    imgState.scale = newScale;
+    applyImgTransform(e.target);
+    showZoom();
+}
+
+function imgDblClick(e) {
+    const container = document.getElementById('preview-content');
+    const img = e.target;
+    if (imgState.scale > imgState.fitScale * 1.5) {
+        zoomReset();
+    } else {
+        const newScale = imgState.fitScale * 3;
+        const rect = container.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        imgState.x = mx - (mx - imgState.x) * (newScale / imgState.scale);
+        imgState.y = my - (my - imgState.y) * (newScale / imgState.scale);
+        imgState.scale = newScale;
+        applyImgTransform(img);
+        showZoom();
+    }
+}
+
+async function previewText(f) {
+    const token = localStorage.getItem('token');
+    const url = API + '/api/files/view?' + new URLSearchParams({root: currentPath, path: f.path, token});
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const text = await r.text();
+    document.getElementById('preview-title').textContent = f.name;
+    const container = document.getElementById('preview-content');
+    const oldImg = container.querySelector('img');
+    if (oldImg) oldImg.remove();
+    const oldPre = container.querySelector('pre');
+    if (oldPre) oldPre.remove();
+    const oldMd = container.querySelector('.md-body');
+    if (oldMd) oldMd.remove();
+    document.getElementById('zoom-controls').style.display = 'none';
+    document.getElementById('zoom-indicator').style.display = 'none';
+    const truncated = text.length > 100000 ? text.slice(0, 100000) + '\n\n... (truncated)' : text;
+    const isMd = f.ext === '.md' || f.name.endsWith('.md');
+    if (isMd && typeof marked !== 'undefined') {
+        const div = document.createElement('div');
+        div.className = 'md-body';
+        div.innerHTML = marked.parse(truncated);
+        container.insertBefore(div, container.firstChild);
+    } else {
+        const pre = document.createElement('pre');
+        pre.textContent = truncated;
+        container.insertBefore(pre, container.firstChild);
+    }
+    document.getElementById('preview-panel').classList.add('open');
+}
+
+function closePreview() {
+    document.getElementById('preview-panel').classList.remove('open');
+    const img = getImg();
+    if (img) img.remove();
+    const pre = document.querySelector('#preview-content pre');
+    if (pre) pre.remove();
+    const md = document.querySelector('#preview-content .md-body');
+    if (md) md.remove();
+    document.getElementById('zoom-controls').style.display = 'none';
+    document.getElementById('zoom-indicator').style.display = 'none';
+    activePointers.clear();
+}
+
+function getFileIcon(ext) {
+    const icons = {'.py':'🐍','.js':'📜','.ts':'📜','.json':'📋','.md':'📝','.txt':'📄','.sh':'⚙','.css':'🎨','.html':'🌐','.csv':'📊','.pdf':'📕','.docx':'📘','.xlsx':'📗','.log':'📃','.xml':'📰','.yaml':'📋','.yml':'📋','.toml':'📋'};
+    return icons[ext] || '📄';
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function timeAgo(ts) {
+    const diff = Date.now() / 1000 - ts;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+    return Math.floor(diff / 86400) + 'd';
+}
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+let projectsRefreshTimer = null;
+
+function startProjectsRefresh() {
+    stopProjectsRefresh();
+    projectsRefreshTimer = setInterval(() => {
+        const screen = document.getElementById('projects-screen');
+        if (screen.classList.contains('active')) loadProjects();
+    }, 5000);
+}
+
+function stopProjectsRefresh() {
+    if (projectsRefreshTimer) { clearInterval(projectsRefreshTimer); projectsRefreshTimer = null; }
+}
+
+async function toggleSession(session, path, isActive) {
+    const token = localStorage.getItem('token');
+    if (isActive) {
+        await fetch(API + '/api/stop', {
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
+            body: JSON.stringify({session})
+        });
+    } else {
+        await fetch(API + '/api/ensure', {
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
+            body: JSON.stringify({session, path})
+        });
+    }
+    loadProjects();
+}
+
+if (localStorage.getItem('token')) loadProjects();
+else showScreen('login-screen');
+</script>
+</body>
+</html>

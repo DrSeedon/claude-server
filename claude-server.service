@@ -1,0 +1,21 @@
+[Unit]
+Description=Claude Code Web Terminal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# User=YOUR_USER
+# WorkingDirectory=/path/to/claude-server
+# ExecStart=/bin/bash /path/to/claude-server/start-all.sh
+# ExecStop=/bin/bash /path/to/claude-server/manager.sh stop
+KillMode=process
+Restart=on-failure
+RestartSec=15
+StartLimitBurst=3
+StartLimitIntervalSec=60
+# Environment=HOME=/home/YOUR_USER
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

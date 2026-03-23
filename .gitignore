@@ -1,0 +1,10 @@
+config.json
+venv/
+__pycache__/
+*.pyc
+lancedb/
+cloudflared
+start-tunnel.sh
+*.local.sh
+*.log
+.env
