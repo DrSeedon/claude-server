@@ -7,6 +7,7 @@ Each project = separate tmux session with Claude Code inside.
 ## Features
 
 - **Project list** with live status indicators (busy/ready/viewed)
+- **Custom projects** — add any folder via built-in directory picker
 - **Full terminal** via xterm.js with WebSocket
 - **Mobile toolbar** — Esc, Tab, Ctrl+C/D/Z/B/O, arrows, Enter, Yes/No, ClearLn, ClearAll
 - **Scroll joystick** — drag-based speed control for terminal scrolling
@@ -78,6 +79,9 @@ static/                 # xterm.js + addons (fit, web-links), marked.js
 | GET | `/api/projects` | List projects with states |
 | POST | `/api/ensure` | Create/attach tmux session |
 | POST | `/api/stop` | Stop tmux session |
+| POST | `/api/custom-project` | Add custom project by path |
+| POST | `/api/custom-project/remove` | Remove custom project |
+| GET | `/api/dirs` | List directories (for picker) |
 | GET | `/api/files` | List project files |
 | GET | `/api/files/view` | Serve file (image/text/etc) |
 | WS | `/ws/{session}` | WebSocket terminal |
