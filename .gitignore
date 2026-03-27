@@ -1,4 +1,5 @@
 config.json
+custom_projects.json
 venv/
 __pycache__/
 *.pyc

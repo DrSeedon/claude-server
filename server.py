@@ -19,6 +19,7 @@ from aiohttp import web
 
 SERVER_DIR = Path(__file__).parent
 CONFIG_FILE = SERVER_DIR / "config.json"
+CUSTOM_PROJECTS_FILE = SERVER_DIR / "custom_projects.json"
 HTML_FILE = SERVER_DIR / "index.html"
 MANAGER_SCRIPT = SERVER_DIR / "manager.sh"
 PORT = 8080
@@ -54,6 +55,18 @@ def verify_token(token):
         del tokens[token]
         return False
     return True
+
+
+def _load_custom_projects():
+    if CUSTOM_PROJECTS_FILE.exists():
+        with open(CUSTOM_PROJECTS_FILE) as f:
+            return json.load(f)
+    return []
+
+
+def _save_custom_projects(projects):
+    with open(CUSTOM_PROJECTS_FILE, "w") as f:
+        json.dump(projects, f, indent=2)
 
 
 def _encode_path(path):
@@ -146,44 +159,57 @@ def _get_recent_project_time(project_dir):
     return best
 
 
+def _make_project_item(real_path, active, session_states, custom=False):
+    name = Path(real_path).name
+    safe = name.replace(" ", "-").replace(".", "_")
+    session = f"claude-{safe}"
+    projects_dir = Path.home() / ".claude" / "projects"
+    encoded = _encode_path(real_path)
+    d = projects_dir / encoded
+    recent = _get_recent_project_time(d) if d.is_dir() else 0
+    if session not in active:
+        state = "none"
+    elif session in viewed_sessions and session_states.get(session) == "ready":
+        state = "viewed"
+    else:
+        state = session_states.get(session, "idle")
+    return {
+        "name": name,
+        "session": session,
+        "path": real_path,
+        "active": session in active,
+        "state": state,
+        "recent": recent,
+        "custom": custom,
+    }
+
+
 def get_projects():
     projects_dir = Path.home() / ".claude" / "projects"
-    if not projects_dir.exists():
-        return {}
-
     path_map = _build_path_map()
     home = str(Path.home())
     active = _get_active_sessions()
     session_states = _get_session_states()
+    seen_paths = set()
     items = []
 
-    for d in projects_dir.iterdir():
-        if not d.is_dir():
-            continue
-        encoded = d.name
-        real_path = path_map.get(encoded)
-        if not real_path or real_path == home:
-            continue
-        if not os.path.isdir(real_path):
-            continue
-        name = Path(real_path).name
-        safe = name.replace(" ", "-").replace(".", "_")
-        session = f"claude-{safe}"
-        recent = _get_recent_project_time(d)
-        if session not in active:
-            state = "none"
-        elif session in viewed_sessions and session_states.get(session) == "ready":
-            state = "viewed"
-        else:
-            state = session_states.get(session, "idle")
-        items.append({
-            "name": name,
-            "session": session,
-            "path": real_path,
-            "active": session in active,
-            "state": state,
-            "recent": recent,
-        })
+    if projects_dir.exists():
+        for d in projects_dir.iterdir():
+            if not d.is_dir():
+                continue
+            real_path = path_map.get(d.name)
+            if not real_path or real_path == home:
+                continue
+            if not os.path.isdir(real_path):
+                continue
+            seen_paths.add(real_path)
+            items.append(_make_project_item(real_path, active, session_states))
+
+    for cp in _load_custom_projects():
+        p = cp if isinstance(cp, str) else cp.get("path", "")
+        if p and os.path.isdir(p) and p not in seen_paths:
+            seen_paths.add(p)
+            items.append(_make_project_item(p, active, session_states, custom=True))
 
     items.sort(key=lambda x: (-x["active"], x["name"].lower()))
 
@@ -194,6 +220,7 @@ def get_projects():
             "path": item["path"],
             "active": item["active"],
             "state": item["state"],
+            "custom": item["custom"],
         }
     return result
 
@@ -297,6 +324,50 @@ async def handle_stop_session(request):
     viewed_sessions.discard(session)
     return web.json_response({"status": "stopped"})
 
+
+async def handle_add_custom_project(request):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not verify_token(auth[7:]):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    body = await request.json()
+    path = body.get("path", "").rstrip("/")
+    if not path or not os.path.isdir(path):
+        return web.json_response({"error": "invalid path"}, status=400)
+    projects = _load_custom_projects()
+    paths = [p if isinstance(p, str) else p.get("path", "") for p in projects]
+    if path not in paths:
+        projects.append(path)
+        _save_custom_projects(projects)
+    return web.json_response({"status": "added"})
+
+
+async def handle_remove_custom_project(request):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not verify_token(auth[7:]):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    body = await request.json()
+    path = body.get("path", "").rstrip("/")
+    projects = _load_custom_projects()
+    projects = [p for p in projects if (p if isinstance(p, str) else p.get("path", "")) != path]
+    _save_custom_projects(projects)
+    return web.json_response({"status": "removed"})
+
+
+async def handle_list_dirs(request):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not verify_token(auth[7:]):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    parent = request.query.get("path", "/")
+    if not os.path.isdir(parent):
+        return web.json_response({"error": "not a directory"}, status=400)
+    dirs = []
+    try:
+        for entry in sorted(os.scandir(parent), key=lambda e: e.name.lower()):
+            if entry.is_dir() and not entry.name.startswith('.'):
+                dirs.append({"name": entry.name, "path": entry.path})
+    except OSError:
+        pass
+    return web.json_response(dirs)
 
 
 
@@ -459,6 +530,9 @@ app.router.add_post("/api/login", handle_login)
 app.router.add_get("/api/projects", handle_projects)
 app.router.add_post("/api/ensure", handle_ensure)
 app.router.add_post("/api/stop", handle_stop_session)
+app.router.add_post("/api/custom-project", handle_add_custom_project)
+app.router.add_post("/api/custom-project/remove", handle_remove_custom_project)
+app.router.add_get("/api/dirs", handle_list_dirs)
 app.router.add_get("/api/files", handle_files)
 app.router.add_get("/api/files/view", handle_file_view)
 app.router.add_get("/ws/{session}", websocket_handler)
