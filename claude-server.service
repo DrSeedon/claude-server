@@ -2,6 +2,8 @@
 Description=Claude Code Web Terminal
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -9,11 +11,11 @@ Type=simple
 # WorkingDirectory=/path/to/claude-server
 # ExecStart=/bin/bash /path/to/claude-server/start-all.sh
 # ExecStop=/bin/bash /path/to/claude-server/manager.sh stop
-KillMode=process
+# Kill every helper/tunnel in the service cgroup; KillMode=process leaks
+# background reconnect loops after each failed restart.
+KillMode=control-group
 Restart=on-failure
 RestartSec=15
-StartLimitBurst=3
-StartLimitIntervalSec=60
 # Environment=HOME=/home/YOUR_USER
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
